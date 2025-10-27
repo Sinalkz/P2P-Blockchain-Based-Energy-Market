@@ -254,7 +254,9 @@ class Blockchain:
                 
         except sqlite3.Error as e:
             logging.error(f"Error loading blockchain: {e}")
-            self._reset_blockchain()
+            # If tables don't exist yet, just start with empty chain
+            self.chain = []
+            self.current_transactions = []
 
     def new_block(self, proof, previous_hash=None):
         if previous_hash is None:

@@ -6,6 +6,7 @@ from uuid import uuid4
 from urllib.parse import urlparse
 from flask import Flask, jsonify, request, render_template_string
 import logging
+import math
 import requests
 import random
 import string
@@ -796,6 +797,12 @@ def add_transaction():
             print(f"ERROR: Power value: {values.get('power')} ({type(values.get('power'))})")
             print(f"ERROR: Price value: {values.get('price')} ({type(values.get('price'))})")
             return jsonify({"error": "Invalid numeric values for power or price"}), 400
+
+        # Power and price must be positive, finite numbers (a negative value would reverse the trade)
+        if not (math.isfinite(power_amount) and math.isfinite(price_per_kwh)) or power_amount <= 0 or price_per_kwh <= 0:
+            return jsonify({"error": "Power and price must be greater than 0"}), 400
+        if values["role"] not in ("seller", "buyer"):
+            return jsonify({"error": "Role must be 'seller' or 'buyer'"}), 400
         
         # Get initial balances
         print(f"DEBUG: Getting sender account: {values['sender']}")
@@ -855,14 +862,13 @@ def add_transaction():
             
         try:
             print("DEBUG: Updating balances")
-            # Update ETH balances: buyer pays seller
-            account_manager.update_balance(buyer_name, -total_cost)
-            account_manager.update_balance(seller_name, total_cost)
-
-            # Update power balances: seller transfers power to buyer
-            account_manager.update_power_balance(seller_name, -power_amount)
-            account_manager.update_power_balance(buyer_name, power_amount)
-                
+            # Buyer pays seller and seller transfers power to buyer, in one database transaction
+            account_manager.apply_balance_changes([
+                (buyer_name, 'balance', -total_cost),
+                (seller_name, 'balance', total_cost),
+                (seller_name, 'power_balance', -power_amount),
+                (buyer_name, 'power_balance', power_amount),
+            ])
         except ValueError as e:
             print(f"ERROR: Failed to update balances: {str(e)}")
             return jsonify({"error": str(e)}), 400
@@ -1074,8 +1080,12 @@ def transfer_power():
             return jsonify({"error": f"Insufficient power balance for transfer"}), 400
             
         # Update power balances
-        new_sender_balance = account_manager.update_power_balance(values["sender"], -amount)
-        new_receiver_balance = account_manager.update_power_balance(values["receiver"], amount)
+        new_balances = account_manager.apply_balance_changes([
+            (values["sender"], 'power_balance', -amount),
+            (values["receiver"], 'power_balance', amount),
+        ])
+        new_sender_balance = new_balances[(values["sender"], 'power_balance')]
+        new_receiver_balance = new_balances[(values["receiver"], 'power_balance')]
         
         return jsonify({
             "message": "Power transfer successful",

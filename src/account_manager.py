@@ -76,7 +76,7 @@ def get_account(name):
         columns = [column[1] for column in cursor.fetchall()]
         print(f"DEBUG: Account table columns: {columns}")
 
-        cursor.execute("SELECT * FROM accounts WHERE name = ?", (name,))
+        cursor.execute("SELECT id, name, public_key, balance, power_balance, created_at FROM accounts WHERE name = ?", (name,))
         account = cursor.fetchone()
         if account:
             print(f"DEBUG: Raw account data: {account}")
@@ -85,9 +85,9 @@ def get_account(name):
                 "id": account[0],
                 "name": account[1],
                 "public_key": account[2],
-                "balance": float(account[4]) if account[4] is not None else 0.0,
-                "power_balance": float(account[5]) if account[5] is not None else 0.0,
-                "created_at": account[6]
+                "balance": float(account[3]) if account[3] is not None else 0.0,
+                "power_balance": float(account[4]) if account[4] is not None else 0.0,
+                "created_at": account[5]
             }
             print(f"DEBUG: Processed account data: {account_dict}")
             return account_dict
@@ -162,6 +162,42 @@ def update_power_balance(name, amount):
     except sqlite3.Error as e:
         logging.error(f"Database error in update_power_balance: {e}")
         raise ValueError("Failed to update power balance")
+    finally:
+        conn.close()
+
+def apply_balance_changes(changes):
+    """Apply several balance changes in one database transaction: all of them or none.
+
+    changes: list of (account_name, column, delta), column being 'balance' or 'power_balance'.
+    Returns {(account_name, column): new_value}.
+    """
+    conn = sqlite3.connect('p2p_energy_trading.db')
+    try:
+        cursor = conn.cursor()
+        cursor.execute("BEGIN IMMEDIATE")  # lock for the whole read-modify-write
+        new_values = {}
+        for name, column, delta in changes:
+            if column not in ('balance', 'power_balance'):
+                raise ValueError(f"Unknown balance column {column}")
+            cursor.execute(f"SELECT {column} FROM accounts WHERE name = ?", (name,))
+            result = cursor.fetchone()
+            if not result:
+                raise ValueError(f"Account {name} not found")
+            new_value = (float(result[0]) if result[0] is not None else 0.0) + float(delta)
+            if new_value < 0:
+                kind = "power balance" if column == 'power_balance' else "balance"
+                raise ValueError(f"Insufficient {kind} for account {name}")
+            cursor.execute(f"UPDATE accounts SET {column} = ? WHERE name = ?", (new_value, name))
+            new_values[(name, column)] = new_value
+        conn.commit()
+        return new_values
+    except sqlite3.Error as e:
+        conn.rollback()
+        logging.error(f"Database error in apply_balance_changes: {e}")
+        raise ValueError("Failed to update balances")
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 

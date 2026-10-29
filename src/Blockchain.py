@@ -9,6 +9,7 @@ import logging
 import requests
 import random
 import string
+import traceback
 
 # Initialize the SQLite database
 conn = sqlite3.connect('p2p_energy_trading.db', check_same_thread=False)
@@ -281,17 +282,8 @@ class Blockchain:
                            block['previous_hash'], block_hash))
         block_id = self.cursor.lastrowid
         
-        # Insert transactions
-        for tx in self.current_transactions:
-            self.cursor.execute('''INSERT INTO Transactions 
-                                  (block_id, Seller, Buyer, Power, Price, transaction_timestamp) 
-                                  VALUES (?, ?, ?, ?, ?, ?)''',
-                              (block_id, 
-                               str(tx['Seller']), 
-                               str(tx['Buyer']), 
-                               float(tx['Power']), 
-                               float(tx['Price']),
-                               tx.get('transaction_timestamp', str(datetime.now()))))
+        # Pending transactions are already stored (block_id NULL): attach them to this block
+        self.cursor.execute("UPDATE Transactions SET block_id = ? WHERE block_id IS NULL", (block_id,))
         
         self.conn.commit()
         
@@ -329,8 +321,15 @@ class Blockchain:
             }
             print(f"DEBUG: Created transaction object: {transaction}")
             
-            # Add transaction to current transactions
+            # Add transaction to current transactions, and store it as pending (block_id NULL)
+            # so it survives a restart until it is mined
             self.current_transactions.append(transaction)
+            self.cursor.execute('''INSERT INTO Transactions
+                                  (block_id, Seller, Buyer, Power, Price, transaction_timestamp)
+                                  VALUES (NULL, ?, ?, ?, ?, ?)''',
+                              (transaction['Seller'], transaction['Buyer'], power, price,
+                               transaction['transaction_timestamp']))
+            self.conn.commit()
             print(f"DEBUG: Added transaction to current_transactions")
             
             # Log the transaction with proper type handling
@@ -357,11 +356,12 @@ class Blockchain:
             print(f"ERROR traceback: {traceback.format_exc()}")
             raise
     
-    def validate_chain(self):
-        # Validate the blockchain by checking hash links between blocks
-        for i in range(1, len(self.chain)):
-            previous_block = self.chain[i - 1]
-            current_block = self.chain[i]
+    def validate_chain(self, chain=None):
+        # Validate a blockchain (ours by default) by checking hash links between blocks
+        chain = self.chain if chain is None else chain
+        for i in range(1, len(chain)):
+            previous_block = chain[i - 1]
+            current_block = chain[i]
             #current_block['previous_hash'] = previous_block['block_hash']
             if current_block['previous_hash'] != previous_block['block_hash']:
                 print(f"Validation failed: {current_block['previous_hash']} != {previous_block['block_hash']}")
@@ -415,7 +415,7 @@ class Blockchain:
                 response = requests.get(f'http://{node}/chain').json()
                 length = response['length']
                 chain = response['chain']
-                if length > max_length and self.valid_chain(chain):
+                if length > max_length and self.validate_chain(chain):
                     max_length = length
                     new_chain = chain
             except requests.exceptions.RequestException as e:

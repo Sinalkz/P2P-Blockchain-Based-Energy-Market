@@ -7,7 +7,7 @@ A decentralized peer-to-peer energy trading platform built with blockchain techn
 ### Core Functionality
 - **Blockchain-Based Trading**: Secure, immutable transactions recorded on a distributed ledger
 - **Dual Balance System**: Manage both ETH (cryptocurrency) and Power (kWh) balances for each account
-- **Automated Matching**: Buyer-seller transaction matching with automatic price averaging
+- **Direct Trades**: Each trade settles immediately between buyer and seller at the stated price
 - **Proof-of-Work Consensus**: Mining mechanism ensuring network security and transaction validation
 - **Cryptographic Security**: RSA key pairs for each account ensuring secure transactions
 - **Web Interface**: Modern, intuitive UI for interacting with the blockchain
@@ -21,8 +21,7 @@ A decentralized peer-to-peer energy trading platform built with blockchain techn
 
 ### Transaction System
 - Role-based transactions (Buyer/Seller)
-- Automatic buyer-seller matching
-- Price negotiation through averaged pricing
+- Immediate settlement at the price given in the request
 - Real-time balance updates
 - Transaction history logging
 
@@ -65,7 +64,7 @@ A decentralized peer-to-peer energy trading platform built with blockchain techn
 - `id` (TEXT PRIMARY KEY): Unique account identifier
 - `name` (TEXT UNIQUE): Account name
 - `public_key` (TEXT): RSA public key
-- `private_key` (TEXT): RSA private key (encrypted)
+- `private_key` (TEXT): RSA private key (stored unencrypted in this proof of concept)
 - `balance` (REAL): ETH balance
 - `power_balance` (REAL): Energy balance in kWh
 - `created_at` (TIMESTAMP): Account creation timestamp
@@ -173,7 +172,6 @@ python main.py --clear
 - Select your role (Buyer or Seller)
 - The system automatically:
   - Validates balances
-  - Matches buyer with seller
   - Updates ETH and power balances
   - Records the transaction
 
@@ -251,7 +249,7 @@ python main.py --clear
 - **Hash Chaining**: Each block is cryptographically linked to the previous one
 - **Transaction Validation**: Automatic balance verification before transactions
 - **Immutable Ledger**: Once recorded, transactions cannot be modified
-- **Private Key Storage**: Keys stored securely in the database
+- **Private Key Storage**: Keys are stored unencrypted in the local SQLite database (proof of concept only)
 
 ## 📊 Workflow Example
 
@@ -261,14 +259,12 @@ python main.py --clear
 3. Alice adds 100 kWh of power
 4. Bob creates account
 5. Bob adds 10 ETH to his balance
-6. Alice initiates transaction: Sell 50 kWh at 0.002 ETH/kWh (Role: Seller)
-7. Bob initiates transaction: Buy 50 kWh at 0.001 ETH/kWh (Role: Buyer)
-8. System matches transactions (average price: 0.0015 ETH/kWh)
-9. Updates balances:
+6. Alice sells 50 kWh to Bob at 0.0015 ETH/kWh (sender: Alice, receiver: Bob, role: seller)
+7. The trade settles immediately (50 × 0.0015 = 0.075 ETH):
    - Alice: ETH += 0.075, Power -= 50
    - Bob: ETH -= 0.075, Power += 50
-10. Mine block → Transaction recorded in blockchain
-11. View blockchain → See immutable transaction history
+8. Mine block → Transaction recorded in blockchain
+9. View blockchain → See immutable transaction history
 ```
 
 ## 🛠️ Development
@@ -359,7 +355,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 This project implements a peer-to-peer energy trading market using blockchain technology for a master's thesis on decentralized energy markets. The system demonstrates:
 
 - Decentralized energy trading without intermediaries
-- Automated market matching mechanisms
+- Direct peer-to-peer settlement between buyer and seller
 - Cryptographic security for energy transactions
 - Transparent and immutable transaction records
 - Scalable blockchain architecture for energy systems

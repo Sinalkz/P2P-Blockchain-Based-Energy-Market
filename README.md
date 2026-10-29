@@ -345,7 +345,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 👤 Author
 
-**Sina Khozoei**
+**Ali Lakzaei**
 - GitHub: [@Sinalkz](https://github.com/Sinalkz)
 
 ## 🙏 Acknowledgments
